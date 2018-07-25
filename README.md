@@ -6,7 +6,7 @@ This smart contract is designed to issue mintible tokens with unlimited total su
 
 ## Code
 
-``` 
+``` mycryptobank.hpp
 /// Developed by Phenom.Team <info@phenom.team>
 #pragma once
 
