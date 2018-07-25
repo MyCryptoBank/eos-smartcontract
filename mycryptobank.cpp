@@ -1,12 +1,3 @@
-# Mycryptobank presale smart-contract
-
-This smart contract is designed to issue mintible tokens with unlimited total supply and ability to disable transfers until the minting is not finished.
- 
-
-
-## Code
-
-``` 
 /// Developed by Phenom.Team <info@phenom.team>
 #pragma once
 
@@ -101,6 +92,30 @@ namespace mycryptobank {
             /// Primary index:
             /// sumbol token symbol code.
             typedef multi_index<N(tokens_info), token_info> tokens_info;
-	};
+
+                        
+            void sub_balance(account_name from, asset value);
+
+            void add_balance(account_name holder, asset value, account_name ram_payer);
+
+            void add_supply(asset value);
+    };
+
+    asset mintabletoken::get_supply(symbol_name symbol)const
+    {
+        tokens_info tokens_info_table( _self, symbol);
+        auto existing = tokens_info_table.find(symbol);
+        eosio_assert(existing != tokens_info_table.end(), "unknown symbol");
+        const auto& token_info = *existing;
+        return token_info.supply;
+    }
+
+    asset mintabletoken::get_balance( account_name holder, symbol_name symbol)const
+    {
+        eosio_assert(is_account(holder), "holder account does not exist");
+        holders accounts_table( _self, holder);
+        const auto& account = accounts_table.get(symbol);
+        return account.balance;
+    }
+
 }
-```
