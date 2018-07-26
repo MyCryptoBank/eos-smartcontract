@@ -1,121 +1,154 @@
-/// Developed by Phenom.Team <info@phenom.team>
-#pragma once
+#include "mycryptobank.hpp"
 
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/asset.hpp>
-#include <string>
 
 namespace mycryptobank {
-    using std::string;
-    using eosio::asset;
-    using eosio::contract;
-    using eosio::symbol_name;
-    using eosio::multi_index;
 
-    class mintabletoken : public contract {
-        public:
-            mintabletoken(account_name self) : contract(self){}
-      
-            /// Creates token with a symbol name for the specified issuer account.
-            /// Throws if token with specified symbol already exists.
-            /// @param issuer Account name of the token issuer.
-            /// @param symbol Symbol code of the token.
-            /// @param symbol precision Precision of the token.
-            /// @param transferable Token trasferable status(true of false). If true is ts not neccessary to unfreeze after finishing minting.
-            void create(account_name issuer, string symbol, uint8_t precision, bool transferable);
+    using eosio::string_to_symbol;
 
-            /// Issues specified number of tokens with previously created symbol to the account name "to". 
-            /// Requires authorization from the issuer.
-            /// @param to Account name of tokens receiver
-            /// @param value Number of tokens to issue for specified symbol (positive integer number)
-            /// @param memo Action memo (max. 256 bytes)
-            void issue(account_name to, asset value, string memo);
-
-            /// Transfers specified number of tokens from account "from" to account "to".
-            /// Throws if token with specified symbol code does not exist, or "from" balance is less than value.amount.
-            /// @param from Account name of token owner
-            /// @param to Account name of token receiver
-            /// @param asset Amount of the tokens to transfer
-            /// @param memo Action memo (max. 256 bytes)
-            void transfer(account_name from, account_name to, asset value, string memo);
-
-            /// Stops emission of the token with the specified symbol code.
-            /// Requires authorization from the issuer.
-            /// @param symbol Symbol code of token to stop minting.
-            void finishissue(symbol_name symbol);
-
-            /// Allows token transfers.
-            /// Requires authorization from the issuer.
-            /// @param symbol Symbol code of token to stop minting.
-            void unfreeze(symbol_name symbol);
-
-            /// Returns current total supply of specified token.
-            /// @param symbol Symbol code of token to get total supply.
-            inline asset get_supply(symbol_name symbol )const;
-
-            /// Returns current ${holder} balance of specified token.
-            /// @param holder Name of account to get balance.
-            /// @param symbol Symbol code of token to get balance.
-            inline asset get_balance( account_name holder, symbol_name symbol )const;
-
-
-        private:
-            /// Structure keeps information about the balance of tokens 
-            /// for each symbol that is owned by an account. 
-            /// This structure is stored in the multi_index table "holders".
-            // @abi table holders i64
-            struct holder {
-                asset balance;
-                
-                uint64_t primary_key() const { return balance.symbol.name(); }
-            };
-            
-            /// Account balance table
-            /// Primary index:
-            /// holder account name
-            typedef multi_index<N(holders), holder> holders;
-
-            /// Structure keeps  system information about each issued token.
-            /// Token keeps track of its supply, issuer, transfers ability and minting status.
-            /// This structure is stored in the multi_index table "tokens_info".
-            // @abi table token i64             
-            struct token_info {
-                asset supply;
-                account_name issuer;
-                bool frozen;
-                bool minting_finished;
+    // @abi action
+    void mintabletoken::create(account_name issuer, string symbol, uint8_t precision, bool frozen)
+    {
+        require_auth(_self);
+        eosio_assert(is_account(issuer), "issuer account does not exist");
         
-                uint64_t primary_key()const { return supply.symbol.name(); }
-            };
+        asset supply(0, string_to_symbol(precision, symbol.c_str()));
+        auto _symbol = supply.symbol;
 
-            /// Tokens info table
-            /// Primary index:
-            /// sumbol token symbol code.
-            typedef multi_index<N(tokens_info), token_info> tokens_info;
+        eosio_assert(_symbol.is_valid(), "invalid symbol name" );
+        eosio_assert(_symbol.is_valid(), "invalid supply");
+        
+        auto symbol_name = _symbol.name();
+        tokens_info tokens_info_table(_self, symbol_name);
+        auto existing = tokens_info_table.find(symbol_name);
+        eosio_assert(existing != tokens_info_table.end(), "token with the same symbol already exists");
+        
+        tokens_info_table.emplace(_self, [&](auto& token_info) {
+            token_info.supply = supply;
+            token_info.issuer = issuer;
+            token_info.frozen = frozen;
+            token_info.minting_finished = false;
+        });
+    }
 
-                        
-            void sub_balance(account_name from, asset value);
+    // @abi action
+    void mintabletoken::issue(account_name to, asset value, string memo)
+    {
+        eosio_assert(is_account(to), "to account does not exist");
+        eosio_assert(memo.size() <= 256, "memo has more than 256 bytes");
+    
+        auto symbol = value.symbol;
+        auto symbol_name = symbol.name();
+        
+        tokens_info tokens_info_table( _self, symbol_name);
+        auto existing = tokens_info_table.find(symbol_name);
+        eosio_assert(existing != tokens_info_table.end(), "unknown symbol, create token before issuance");
+        const auto& token_sysinfo = *existing;
+        eosio_assert(token_sysinfo.minting_finished == false, "minting is finished");
 
-            void add_balance(account_name holder, asset value, account_name ram_payer);
+        require_auth(token_sysinfo.issuer);
 
-            void add_supply(asset value);
-    };
+        eosio_assert(value.is_valid(), "invalid issuance value");
+        eosio_assert(value.amount > 0, "negative issuance amount");
 
-    asset mintabletoken::get_supply(symbol_name symbol)const
+        eosio_assert(value.symbol == token_sysinfo.supply.symbol, "wrong precision");
+
+        add_supply(value);
+        add_balance(to, value, token_sysinfo.issuer);
+
+        if( to != token_sysinfo.issuer ) {
+            SEND_INLINE_ACTION(*this, transfer, {token_sysinfo.issuer,N(active)}, {token_sysinfo.issuer, to, value, memo});
+        }
+    }
+
+    // @abi action
+    void mintabletoken::transfer(account_name from, account_name to, asset value, string memo)
+    {
+        eosio_assert(from != to, "self transfers are not allowed");
+        require_auth(from);
+        eosio_assert(is_account(to), "dectination account does not exist");
+        eosio_assert(memo.size() <= 256, "memo has more than 256 bytes" );
+
+        auto symbol = value.symbol.name();
+        tokens_info tokens_info_table( _self, symbol);
+        const auto& token_info = tokens_info_table.get(symbol);
+
+        require_recipient(from);
+        require_recipient(to);
+
+        eosio_assert(value.is_valid(), "invalid quantity" );
+        eosio_assert(value.amount > 0, "negative transfer amount" );
+        eosio_assert(value.symbol == token_info.supply.symbol, "wrong precision" );
+        
+        sub_balance(from, value);
+        add_balance(to, value, from );
+        
+    }
+
+    // @abi action
+    void mintabletoken::finishissue(symbol_name symbol)
     {
         tokens_info tokens_info_table( _self, symbol);
         auto existing = tokens_info_table.find(symbol);
         eosio_assert(existing != tokens_info_table.end(), "unknown symbol");
-        const auto& token_info = *existing;
-        return token_info.supply;
+        const auto& token_sysinfo = *existing;
+        tokens_info_table.modify(token_sysinfo, token_sysinfo.issuer, [&]( auto& _token_sysinfo) {
+            _token_sysinfo.minting_finished = true;
+        });
     }
 
-    asset mintabletoken::get_balance( account_name holder, symbol_name symbol)const
+    // @abi action
+    void mintabletoken::unfreeze(symbol_name symbol)
+    {   
+        tokens_info tokens_info_table( _self, symbol);
+        auto existing = tokens_info_table.find(symbol);
+        eosio_assert(existing != tokens_info_table.end(), "unknown symbol");
+        const auto& token_sysinfo = *existing;
+        require_auth(token_sysinfo.issuer);
+        tokens_info_table.modify(token_sysinfo, token_sysinfo.issuer, [&]( auto& _token_sysinfo) {
+            _token_sysinfo.frozen = false;
+        });
+    }
+
+    void mintabletoken::sub_balance(account_name holder, asset value)
     {
-        eosio_assert(is_account(holder), "holder account does not exist");
         holders accounts_table( _self, holder);
-        const auto& account = accounts_table.get(symbol);
-        return account.balance;
+        const auto& account_info = accounts_table.get(value.symbol.name(), "account not found");
+        eosio_assert(account_info.balance.amount > value.amount, "insufficient funds");
+
+        if(account_info.balance.amount == value.amount) {
+            accounts_table.erase(account_info);
+        } else {
+            accounts_table.modify(account_info, holder, [&]( auto& _account_info) {
+            _account_info.balance -= value;
+            });
+        }
     }
 
+    void mintabletoken::add_balance( account_name holder, asset value, account_name ram_payer ) 
+    {
+        holders accounts_table( _self, holder);
+        auto account_info = accounts_table.find(value.symbol.name());
+        if(account_info == accounts_table.end() ) {
+            accounts_table.emplace(ram_payer, [&]( auto& _account_info){
+                _account_info.balance = value;
+            });
+        } else {
+            accounts_table.modify(account_info, 0, [&]( auto& _account_info) {
+                _account_info.balance += value;
+            });
+        }
+    }
+
+    void mintabletoken::add_supply(asset value) 
+    {
+        auto symbol_name = value.symbol.name();
+        tokens_info tokens_info_table( _self, symbol_name);
+        auto current_token_info = tokens_info_table.find(symbol_name);
+
+        tokens_info_table.modify(current_token_info, 0, [&]( auto& token_info) {
+            token_info.supply += value;
+        });
+    }
+    
+    EOSIO_ABI(mintabletoken, (create)(issue)(transfer)(unfreeze)(finishissue))
 }
