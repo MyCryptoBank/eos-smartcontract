@@ -1,6 +1,5 @@
 #include "mycryptobank.hpp"
 
-//TODO: serialize tables
 namespace mycryptobank {
 
     using eosio::string_to_symbol;
