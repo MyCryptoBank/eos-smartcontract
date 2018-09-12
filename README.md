@@ -1,4 +1,4 @@
-# Mycryptobank presale smart-contract
+# Mycryptobank mintable token eos smart-contract
 
 This smart contract is designed to issue mintible tokens with unlimited total supply and ability to disable transfers until the minting is not finished.
  
