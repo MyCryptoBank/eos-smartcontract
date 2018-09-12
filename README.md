@@ -51,12 +51,12 @@ namespace mycryptobank {
             /// Stops emission of the token with the specified symbol code.
             /// Requires authorization from the issuer.
             /// @param symbol Symbol code of token to stop minting.
-            void finishissue(symbol_name symbol);
+            void finishissue(sstring symbol);
 
             /// Allows token transfers.
             /// Requires authorization from the issuer.
             /// @param symbol Symbol code of token to stop minting.
-            void unfreeze(symbol_name symbol);
+            void unfreeze(string symbol);
 
             /// Returns current total supply of specified token.
             /// @param symbol Symbol code of token to get total supply.
@@ -71,9 +71,9 @@ namespace mycryptobank {
         private:
             /// Structure keeps information about the balance of tokens 
             /// for each symbol that is owned by an account. 
-            /// This structure is stored in the multi_index table "holders".
-            // @abi table holders i64
-            struct holder {
+            /// This structure is stored in the multi_index table "accounts".
+            // @abi table accounts i64
+            struct account {
                 asset balance;
                 
                 uint64_t primary_key() const { return balance.symbol.name(); }
@@ -81,17 +81,17 @@ namespace mycryptobank {
             
             /// Account balance table
             /// Primary index:
-            /// holder account name
-            typedef multi_index<N(holders), holder> holders;
+            /// account account name
+            typedef multi_index<N(accounts), account> accounts;
 
             /// Structure keeps  system information about each issued token.
             /// Token keeps track of its supply, issuer, transfers ability and minting status.
-            /// This structure is stored in the multi_index table "tokens_info".
+            /// This structure is stored in the multi_index table "stats".
             // @abi table token i64             
-            struct token_info {
+            struct currency_info {
                 asset supply;
                 account_name issuer;
-                bool frozen;
+                bool transferable;
                 bool minting_finished;
         
                 uint64_t primary_key()const { return supply.symbol.name(); }
@@ -100,7 +100,7 @@ namespace mycryptobank {
             /// Tokens info table
             /// Primary index:
             /// sumbol token symbol code.
-            typedef multi_index<N(tokens_info), token_info> tokens_info;
+            typedef multi_index<N(stat), currency_info> stats;
 	};
 }
 ```
