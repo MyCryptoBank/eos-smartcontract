@@ -8739,6 +8739,11 @@
    )
    (i32.const 1040)
   )
+  (call $require_auth
+   (i64.load offset=32
+    (get_local $1)
+   )
+  )
   (call $eosio_assert
    (i32.xor
     (i32.load8_u offset=41

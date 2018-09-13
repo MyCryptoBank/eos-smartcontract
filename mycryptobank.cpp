@@ -108,7 +108,8 @@ namespace mycryptobank {
     
         eosio_assert(existing != tokens_info_table.end(), "unknown symbol");
         const auto& token_info = *existing;
-
+        require_auth(token_info.issuer);
+        
         eosio_assert(!token_info.minting_finished, "minting is already finished");
 
         tokens_info_table.modify(token_info, token_info.issuer, [&]( auto& _token_info) {
