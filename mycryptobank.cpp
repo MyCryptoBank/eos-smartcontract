@@ -1,5 +1,6 @@
 #include "mycryptobank.hpp"
 
+//TODO: serialize tables
 namespace mycryptobank {
 
     using eosio::string_to_symbol;
@@ -25,6 +26,7 @@ namespace mycryptobank {
         tokens_info_table.emplace(_self, [&](auto& token_info) {
             token_info.supply.symbol = _symbol;
             token_info.issuer = issuer;
+            token_info.max_supply = supply;
             token_info.transferable = transferable;
             token_info.minting_finished = false;
         });
@@ -111,6 +113,7 @@ namespace mycryptobank {
 
         tokens_info_table.modify(token_info, token_info.issuer, [&]( auto& _token_info) {
             _token_info.minting_finished = true;
+            _token_info.max_supply = token_info.supply;
         });
     }
 

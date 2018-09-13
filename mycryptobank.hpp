@@ -85,6 +85,7 @@ namespace mycryptobank {
       //@abi table stat i64
       struct currency_info {
         asset supply;
+        asset max_supply;
         account_name issuer;
         bool transferable;
         bool minting_finished;
