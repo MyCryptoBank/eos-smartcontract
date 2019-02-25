@@ -71,7 +71,7 @@
           "name": "to",
           "type": "name"
         },{
-          "name": "value",
+          "name": "quantity",
           "type": "asset"
         },{
           "name": "memo",
